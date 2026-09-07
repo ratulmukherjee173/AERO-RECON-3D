@@ -95,9 +95,10 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
             
     # ── Stage 6 and 7 (Subprocess for Open3D isolation) ───────────────────
     if pipeline_data.get("ply_path") and stage_reports[-1].get("status") != "FAILED" and stage_reports[-1].get("status") != "EXCEPTION":
-        for i, (label, script) in enumerate([
-            ("Stage 6 — Mesh Generation", "backend/app/pipeline/stage6_mesh.py"),
-            ("Stage 7 — Vertex-Colored GLB", "backend/app/pipeline/stage7_texture.py")
+        current_dir = Path(__file__).resolve().parent
+        for i, (label, script_name) in enumerate([
+            ("Stage 6 — Mesh Generation", "stage6_mesh.py"),
+            ("Stage 7 — Vertex-Colored GLB", "stage7_texture.py")
         ], start=len(stages)):
             print(f"\n{'-'*50}")
             print(f"  {label}")
@@ -107,9 +108,10 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
                 on_progress(label.split(" — ")[-1], int((i / (len(stages) + 2)) * 100))
                 
             try:
-                python_exe = "venv_mesh\\Scripts\\python.exe" if Path("venv_mesh\\Scripts\\python.exe").exists() else "python"
+                import sys
+                script_path = str(current_dir / script_name)
                 res = subprocess.run(
-                    [python_exe, script, "--job-id", job_id],
+                    [sys.executable, script_path, "--job-id", job_id],
                     capture_output=True, text=True, check=True
                 )
                 print(res.stdout)

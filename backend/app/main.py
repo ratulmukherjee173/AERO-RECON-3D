@@ -410,15 +410,8 @@ async def download_report(job_id: str):
     )
 
 
-@app.get("/jobs", tags=["pipeline"])
-async def list_jobs(db: Session = Depends(get_db)):
-    """List all known jobs and their statuses."""
-    jobs = db.query(DBJob).all()
-    return [
-        {"job_id": j.job_id, "status": j.status, "progress": j.progress}
-        for j in jobs
-    ]
-from pydantic import BaseModel
+
+
 
 class ReportResponse(BaseModel):
     job_id: str
@@ -476,7 +469,7 @@ async def get_report_status(job_id: str, db: Session = Depends(get_db)):
     )
 
 @app.get("/reports/{job_id}/download", tags=["reports"])
-async def download_report(job_id: str, db: Session = Depends(get_db)):
+async def download_pdf_report(job_id: str, db: Session = Depends(get_db)):
     job = db.query(DBJob).filter(DBJob.job_id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")

@@ -3,6 +3,7 @@ import json
 import time
 import numpy as np
 from pathlib import Path
+from backend.app.core.config import OUTPUTS_DIR
 
 def run_stage6(job_id: str, 
                voxel_size: float = 0.05, 
@@ -17,7 +18,7 @@ def run_stage6(job_id: str,
     start_time = time.time()
     
     # Paths
-    base_dir = Path("backend/data/outputs")
+    base_dir = OUTPUTS_DIR
     stage5_dir = base_dir / job_id / "stage5"
     stage6_dir = base_dir / job_id / "stage6"
     traj_path = base_dir / "trajectory" / f"{job_id}_trajectory.json"

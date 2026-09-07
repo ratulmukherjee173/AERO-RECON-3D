@@ -1,0 +1,22 @@
+# ============================================
+# AERO RECON-3D — Render Deployment
+# ============================================
+# This file configures the FastAPI backend for Render.com
+# See: https://render.com/docs/infrastructure-as-code
+
+services:
+  - type: web
+    name: aero-recon-3d-api
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn app.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: AERORECON_JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://aero-recon-3d.vercel.app
+      - key: PYTHON_VERSION
+        value: 3.11.9
+    healthCheckPath: /health

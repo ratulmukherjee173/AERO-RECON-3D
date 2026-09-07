@@ -16,6 +16,14 @@ SECRET_KEY = os.environ.get("AERORECON_JWT_SECRET", "super_secret_local_fallback
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days for SIH
 
+if SECRET_KEY == "super_secret_local_fallback_key":
+    import warnings
+    warnings.warn(
+        "AERORECON_JWT_SECRET is not set! Using insecure dev fallback. "
+        "Set AERORECON_JWT_SECRET environment variable in production.",
+        stacklevel=2,
+    )
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 class TokenData(BaseModel):

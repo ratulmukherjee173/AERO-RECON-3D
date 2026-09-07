@@ -31,8 +31,9 @@ def export_glb_trimesh(mesh_o3d, out_path):
 def run_stage7(job_id: str):
     print(f"--- STAGE 7: VERTEX-COLORED GLB EXPORT (Job: {job_id}) ---")
     start_time = time.time()
-    
-    base_dir = Path("backend/data/outputs")
+    # Ensure we use the absolute path from config to avoid relative path resolution bugs when deployed
+    from backend.app.core.config import OUTPUTS_DIR
+    base_dir = OUTPUTS_DIR
     stage6_dir = base_dir / job_id / "stage6"
     stage7_dir = base_dir / job_id / "stage7"
     
