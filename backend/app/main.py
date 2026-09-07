@@ -19,7 +19,6 @@ from .core.auth import get_password_hash, verify_password, create_access_token, 
 from .db.models import User as DBUser
 
 from .core.config import UPLOADS_DIR, OUTPUTS_DIR
-from .pipeline.runner import run_pipeline
 from .db.database import engine, Base, get_db, SessionLocal
 from .db.models import Job as DBJob, Project as DBProject
 
@@ -154,6 +153,7 @@ def _run_job(job_id: str, video_path: Path):
                 job.progress = f"Running: {stage}"
                 db.commit()
 
+        from .pipeline.runner import run_pipeline
         result = run_pipeline(video_path, job_id, on_progress=on_progress)
         
         job.status = result["status"]
