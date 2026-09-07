@@ -1,0 +1,66 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+
+# Build Output
+dist
+dist-ssr
+
+# Local Env
+*.local
+.env
+.env.*
+!.env.example
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Backend Database and Data
+backend/data/
+*.sqlite
+*.db
+
+# Python
+__pycache__/
+*.pyc
+venv*/
+
+# Processing Uploads and Outputs (large binary files)
+backend/data/uploads/
+backend/data/outputs/
+*.mp4
+*.avi
+*.mov
+*.srt
+*.ply
+*.glb
+*.obj
+*.pdf
+
+# Temporary test files
+test_browser.js
+test_health.py
+test_cors.py
+test_upload.py
+test_upload_start.py
+test_xatlas.py
+update_readme.py
+benchmark_texture.json
+benchmark_texture_meshes.py
+verify_open3d.py
