@@ -16,7 +16,7 @@ services:
       - key: AERORECON_JWT_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        value: https://aero-recon-3d.vercel.app
+        value: https://aero-recon-3d.vercel.app,https://ratulmukherjee173.github.io
       - key: PYTHON_VERSION
         value: 3.11.9
     healthCheckPath: /health
