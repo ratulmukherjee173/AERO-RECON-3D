@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Menu, Search, Bell, User, LogOut, Settings as SettingsIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Menu, Search, Bell, User, Settings as SettingsIcon } from 'lucide-react';
 import { mockNotifications } from '../../data/mock';
 import { Logo } from '../shared/Logo';
 import { useSettings } from '../../contexts/SettingsContext';
-import { useAuth } from '../../contexts/AuthContext';
 import { useIsMobile, useIsTablet, useIsDesktop } from '../../hooks';
 
 interface HeaderProps {
@@ -13,7 +12,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onMenuClick, pageTitle }) => {
-  const navigate = useNavigate();
+
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const { settings } = useSettings();
@@ -21,7 +20,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, pageTitle }) => {
   const isTablet = useIsTablet();
   const isDesktop = useIsDesktop();
 
-  const { logout } = useAuth();
   const isCompact = !isMobile && (settings.compactSidebar || (isTablet && !isDesktop));
   
   const notifRef = useRef<HTMLDivElement>(null);
@@ -140,13 +138,6 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, pageTitle }) => {
                 
                 <div className="my-1 border-t border-navy-700/50"></div>
                 
-                <button 
-                  onClick={() => { setShowProfile(false); logout(); navigate('/login'); }} 
-                  className="flex items-center gap-2 w-full px-4 py-2 text-xs font-semibold tracking-wide text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Logout
-                </button>
               </div>
             )}
           </div>

@@ -13,8 +13,7 @@ services:
     buildCommand: pip install -r backend/requirements-web.txt
     startCommand: cd backend && gunicorn app.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
     envVars:
-      - key: AERORECON_JWT_SECRET
-        generateValue: true
+
       - key: CORS_ORIGINS
         value: https://aero-recon-3d.vercel.app,https://ratulmukherjee173.github.io,http://localhost:4173,http://localhost:5173,http://127.0.0.1:4173,http://127.0.0.1:5173
       - key: PYTHON_VERSION

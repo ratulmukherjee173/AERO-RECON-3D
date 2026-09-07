@@ -1,9 +1,8 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FolderKanban, PlusCircle, Cpu, Box, Target, FileText, Settings, X, LogOut } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { LayoutDashboard, FolderKanban, PlusCircle, Cpu, Box, Target, FileText, Settings, X } from 'lucide-react';
 import { useIsMobile, useIsTablet, useIsDesktop } from '../../hooks';
 import { useSettings } from '../../contexts/SettingsContext';
-import { useAuth } from '../../contexts/AuthContext';
 import { Logo } from '../shared/Logo';
 
 interface SidebarProps {
@@ -24,7 +23,7 @@ const navItems = [
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const location = useLocation();
-  const navigate = useNavigate();
+
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const isDesktop = useIsDesktop();
@@ -32,12 +31,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   
   const isCompact = !isMobile && (settings.compactSidebar || (isTablet && !isDesktop));
 
-  const { logout } = useAuth();
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-navy-950 border-r border-navy-600/30">
@@ -95,14 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </div>
           )}
         </div>
-        <button 
-          onClick={handleLogout}
-          title={isCompact ? 'Logout' : undefined}
-          className={`mt-4 flex items-center gap-3 text-slate-400 hover:text-red-400 transition-colors w-full ${isCompact ? 'justify-center' : 'px-2'}`}
-        >
-          <LogOut className="w-5 h-5 shrink-0" />
-          {!isCompact && <span className="text-sm font-medium">Logout</span>}
-        </button>
+
       </div>
     </div>
   );

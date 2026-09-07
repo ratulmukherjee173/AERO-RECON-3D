@@ -14,10 +14,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from fastapi.security import OAuth2PasswordRequestForm
-from .core.auth import get_password_hash, verify_password, create_access_token, get_current_user
-from .db.models import User as DBUser
-
 from .core.config import UPLOADS_DIR, OUTPUTS_DIR
 from .db.database import engine, Base, get_db, SessionLocal
 from .db.models import Job as DBJob, Project as DBProject
@@ -62,12 +58,6 @@ def on_startup():
         except Exception:
             db.rollback()
 
-        # Phase C Migration: Normalize existing user emails safely
-        try:
-            db.execute(text("UPDATE users SET email = LOWER(TRIM(email)) WHERE email != LOWER(TRIM(email))"))
-            db.commit()
-        except Exception:
-            db.rollback()
 
         # Restart Behavior: Mark orphaned RUNNING jobs as FAILED
         running_jobs = db.query(DBJob).filter(DBJob.status == "RUNNING").all()
@@ -482,76 +472,3 @@ async def download_pdf_report(job_id: str, db: Session = Depends(get_db)):
         filename=f"aerorecon_{job_id}_report.pdf",
         media_type="application/pdf"
     )
-# ── Auth Endpoints ────────────────────────────────────────────────────────
-
-from pydantic import EmailStr
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-
-class UserResponse(BaseModel):
-    id: str
-    email: str
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    user: UserResponse
-
-@app.post("/auth/register", tags=["auth"], response_model=Token, status_code=201)
-async def register(user_in: UserCreate, db: Session = Depends(get_db)):
-    if len(user_in.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-    
-    normalized_email = user_in.email.strip().lower()
-    
-    # Check duplicate
-    existing = db.query(DBUser).filter(DBUser.email == normalized_email).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Email already registered")
-        
-    hashed_pw = get_password_hash(user_in.password)
-    user_id = uuid.uuid4().hex
-    
-    new_user = DBUser(
-        id=user_id,
-        email=normalized_email,
-        password_hash=hashed_pw,
-        is_active=1
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    access_token = create_access_token(data={"sub": new_user.id, "email": new_user.email})
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserResponse(id=new_user.id, email=new_user.email)
-    )
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-@app.post("/auth/login", tags=["auth"], response_model=Token)
-async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
-    normalized_email = credentials.email.strip().lower()
-    user = db.query(DBUser).filter(DBUser.email == normalized_email).first()
-    if not user or not verify_password(credentials.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
-        
-    user.last_login_at = datetime.utcnow()
-    db.commit()
-    
-    access_token = create_access_token(data={"sub": user.id, "email": user.email})
-    return Token(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserResponse(id=user.id, email=user.email)
-    )
-
-@app.get("/auth/me", tags=["auth"], response_model=UserResponse)
-async def read_users_me(current_user: DBUser = Depends(get_current_user)):
-    return UserResponse(id=current_user.id, email=current_user.email)
