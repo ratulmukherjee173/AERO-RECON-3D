@@ -4,6 +4,7 @@ import {
   Check, Loader2, Film, Sparkles, Camera, Layers, Box, AlertTriangle, XCircle
 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
+import { safeSetStorage } from '../utils/storage';
 
 interface JobStatus {
   job_id: string;
@@ -125,7 +126,7 @@ export default function Processing() {
         
         if (data.status === 'SUCCESS' || data.status === 'FAILED') {
           // Set active job for Viewer and fetch report path
-          localStorage.setItem('last_job_id', jobId);
+          safeSetStorage('last_job_id', jobId);
           try {
             const reportRes = await apiFetch(`/report/${jobId}`, { signal: abortController.signal });
             if (reportRes.ok) {

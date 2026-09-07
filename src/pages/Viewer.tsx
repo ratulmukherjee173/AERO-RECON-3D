@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { mockViewerLayers } from '../data/mock';
 import { apiFetch, BACKEND_URL } from '../utils/api';
+import { safeGetStorage } from '../utils/storage';
 
 function Loader() {
   const { progress } = useProgress();
@@ -217,7 +218,7 @@ function ModelViewer({
 
 export default function Viewer() {
   const [searchParams] = useSearchParams();
-  const jobId = searchParams.get('jobId') || localStorage.getItem('last_job_id');
+  const jobId = searchParams.get('jobId') || safeGetStorage('last_job_id');
 
   const [activeTool, setActiveTool] = useState('rotate');
   const [activeMeasure, setActiveMeasure] = useState<string | null>(null);

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { safeGetStorage } from '../utils/storage';
 import { 
   ArrowLeft, Download, Target
 } from 'lucide-react';
@@ -10,14 +11,14 @@ export default function Accuracy() {
 
   useEffect(() => {
     if (!id) {
-      const lastJob = localStorage.getItem('last_job_id');
+      const lastJob = safeGetStorage('last_job_id');
       if (lastJob) {
         navigate(`/accuracy/${lastJob}`, { replace: true });
       }
     }
   }, [id, navigate]);
 
-  if (!id && !localStorage.getItem('last_job_id')) {
+  if (!id && !safeGetStorage('last_job_id')) {
     return (
       <div className="h-[calc(100vh-theme(spacing.16))] flex flex-col items-center justify-center text-center px-4 -m-4 sm:-m-6 lg:-m-8">
         <Target className="w-16 h-16 text-slate-600 mb-4" />

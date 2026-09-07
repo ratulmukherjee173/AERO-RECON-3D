@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { safeGetStorage, safeSetStorage } from '../utils/storage';
 
 export interface SettingsState {
   darkMode: boolean;
@@ -62,7 +63,7 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SettingsState>(() => {
     try {
-      const saved = localStorage.getItem('aero_recon_settings');
+      const saved = safeGetStorage('aero_recon_settings');
       if (saved) {
         return { ...defaultSettings, ...JSON.parse(saved) };
       }
@@ -73,7 +74,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    localStorage.setItem('aero_recon_settings', JSON.stringify(settings));
+    safeSetStorage('aero_recon_settings', JSON.stringify(settings));
     
     // Apply global dark mode class to body if necessary
     if (settings.darkMode) {

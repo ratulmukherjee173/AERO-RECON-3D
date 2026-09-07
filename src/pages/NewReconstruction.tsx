@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useSettings } from '../contexts/SettingsContext';
 import { apiFetch, BACKEND_URL } from '../utils/api';
+import { safeGetStorage } from '../utils/storage';
 
 export default function NewReconstruction() {
   const navigate = useNavigate();
@@ -142,8 +143,8 @@ export default function NewReconstruction() {
     xhr.open('POST', `${BACKEND_URL}/upload`, true);
     
     // Check for token in localStorage, then sessionStorage
-    const localSession = localStorage.getItem('aerorecon3d_auth_token');
-    const tempSession = sessionStorage.getItem('aerorecon3d_auth_token');
+    const localSession = safeGetStorage('aerorecon3d_auth_token');
+    const tempSession = safeGetStorage('aerorecon3d_auth_token', true);
     const token = localSession || tempSession;
     if (token) {
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);

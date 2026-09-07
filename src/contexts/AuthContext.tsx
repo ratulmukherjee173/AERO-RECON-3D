@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../utils/api';
+import { safeGetStorage, safeSetStorage, safeRemoveStorage } from '../utils/storage';
 
 interface User {
   id: string;
@@ -22,8 +23,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(() => {
     setUser(null);
-    localStorage.removeItem('aerorecon3d_auth_token');
-    sessionStorage.removeItem('aerorecon3d_auth_token');
+    safeRemoveStorage('aerorecon3d_auth_token');
+    safeRemoveStorage('aerorecon3d_auth_token', true);
   }, []);
 
   useEffect(() => {
@@ -37,8 +38,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const verifySession = async () => {
-      const localToken = localStorage.getItem('aerorecon3d_auth_token');
-      const sessionToken = sessionStorage.getItem('aerorecon3d_auth_token');
+      const localToken = safeGetStorage('aerorecon3d_auth_token');
+      const sessionToken = safeGetStorage('aerorecon3d_auth_token', true);
       const token = localToken || sessionToken;
 
       if (!token) {
@@ -68,11 +69,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = (token: string, userData: User, rememberMe: boolean) => {
     setUser(userData);
     if (rememberMe) {
-      localStorage.setItem('aerorecon3d_auth_token', token);
-      sessionStorage.removeItem('aerorecon3d_auth_token');
+      safeSetStorage('aerorecon3d_auth_token', token);
+      safeRemoveStorage('aerorecon3d_auth_token', true);
     } else {
-      sessionStorage.setItem('aerorecon3d_auth_token', token);
-      localStorage.removeItem('aerorecon3d_auth_token');
+      safeSetStorage('aerorecon3d_auth_token', token, true);
+      safeRemoveStorage('aerorecon3d_auth_token');
     }
   };
 
