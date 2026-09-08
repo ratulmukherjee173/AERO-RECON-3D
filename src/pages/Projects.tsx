@@ -58,8 +58,20 @@ export default function Projects() {
 
   const getProjectStatus = (projectId: string) => {
     const projectJobs = jobs.filter(j => j.project_id === projectId);
-    if (projectJobs.length === 0) return 'UPLOADED';
-    // Get most recent job status
+    if (projectJobs.length === 0) return 'NONE';
+    
+    // Determine overall project status based on job history
+    if (projectJobs.some(j => j.status === 'SUCCESS')) return 'SUCCESS';
+    if (projectJobs.some(j => j.status === 'FAILED')) return 'FAILED';
+    
+    // Check active jobs
+    const activeJobs = projectJobs.filter(j => ['UPLOADED', 'QUEUED', 'RUNNING'].includes(j.status));
+    if (activeJobs.length > 0) {
+      if (activeJobs.some(j => j.status === 'RUNNING')) return 'RUNNING';
+      if (activeJobs.some(j => j.status === 'QUEUED')) return 'QUEUED';
+      return 'UPLOADED';
+    }
+    
     return projectJobs[0].status;
   };
 
@@ -69,7 +81,7 @@ export default function Projects() {
                             (p.description || '').toLowerCase().includes(searchTerm.toLowerCase());
       const pStatus = getProjectStatus(p.id);
       const matchesFilter = filter === 'All' || 
-                           (filter === 'Processing' && (pStatus === 'RUNNING' || pStatus === 'QUEUED')) ||
+                           (filter === 'Processing' && ['UPLOADED', 'QUEUED', 'RUNNING'].includes(pStatus)) ||
                            (filter === 'Completed' && pStatus === 'SUCCESS') ||
                            (filter === 'Failed' && pStatus === 'FAILED');
       return matchesSearch && matchesFilter;
@@ -133,7 +145,7 @@ export default function Projects() {
             const statusColor = 
               pStatus === 'SUCCESS' ? 'bg-green-500' :
               pStatus === 'FAILED' ? 'bg-red-500' :
-              (pStatus === 'RUNNING' || pStatus === 'QUEUED') ? 'bg-blue-500' : 'bg-amber-500';
+              (pStatus === 'RUNNING' || pStatus === 'QUEUED' || pStatus === 'UPLOADED') ? 'bg-blue-500' : 'bg-slate-500';
 
             return (
               <div 
@@ -157,7 +169,7 @@ export default function Projects() {
                   
                   <div className="mt-auto pt-4 border-t border-navy-700/50 flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                      <StatusBadge status={pStatus} />
+                      {pStatus !== 'NONE' ? <StatusBadge status={pStatus} /> : <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">No Jobs</span>}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-slate-500 font-mono tracking-wider">{formatDate(project.created_at)}</span>
@@ -174,8 +186,18 @@ export default function Projects() {
           <div className="bg-navy-800/50 p-4 rounded-full mb-4">
             <SearchX className="w-8 h-8 text-slate-500" />
           </div>
-          <h3 className="text-lg font-medium text-slate-200 mb-1">No projects found</h3>
-          <p className="text-slate-400">Try adjusting your search or filters</p>
+          <h3 className="text-lg font-medium text-slate-200 mb-1">
+            {searchTerm ? "No matching projects found" : 
+             filter === 'Processing' ? "No projects currently processing" : 
+             filter === 'Completed' ? "No completed projects yet" : 
+             filter === 'Failed' ? "No failed projects" : 
+             "No projects found"}
+          </h3>
+          <p className="text-slate-400">
+            {searchTerm ? "Try adjusting your search or filters" : 
+             filter === 'All' ? "Create your first reconstruction project to get started." : 
+             "Try adjusting your filters or create a new project."}
+          </p>
         </div>
       )}
     </div>
