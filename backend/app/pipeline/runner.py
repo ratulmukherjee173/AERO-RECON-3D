@@ -109,10 +109,19 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
                 
             try:
                 import sys
+                import os
                 script_path = str(current_dir / script_name)
+                
+                # Add the project root to PYTHONPATH so `backend` can be imported
+                env = os.environ.copy()
+                project_root = str(current_dir.parent.parent.parent.resolve())
+                env["PYTHONPATH"] = project_root + (os.pathsep + env["PYTHONPATH"] if "PYTHONPATH" in env else "")
+
+                python_exe = "venv_mesh\\Scripts\\python.exe" if Path("venv_mesh\\Scripts\\python.exe").exists() else sys.executable
+
                 res = subprocess.run(
-                    [sys.executable, script_path, "--job-id", job_id],
-                    capture_output=True, text=True, check=True
+                    [python_exe, script_path, "--job-id", job_id],
+                    capture_output=True, text=True, check=True, env=env
                 )
                 print(res.stdout)
                 stage_reports.append({"stage": label, "status": "SUCCESS"})
@@ -135,7 +144,12 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
     # ── Final report ──────────────────────────────────────────────────────
     ply_path = pipeline_data.get("ply_path")
     point_count = pipeline_data.get("point_count", 0)
-    success = ply_path is not None and Path(str(ply_path)).exists()
+    
+    # Check if ANY stage failed
+    has_failures = any(s.get("status") in ("FAILED", "EXCEPTION") for s in stage_reports)
+    
+    # Require PLY AND no stage failures for overall SUCCESS
+    success = (ply_path is not None and Path(str(ply_path)).exists()) and not has_failures
 
     report = {
         "job_id": job_id,
