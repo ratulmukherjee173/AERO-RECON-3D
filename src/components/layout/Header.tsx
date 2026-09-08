@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { Menu, Search, Bell, User, Settings as SettingsIcon } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Menu, Search, Bell, User, Settings as SettingsIcon, LogOut, LogIn } from 'lucide-react';
 import { mockNotifications } from '../../data/mock';
 import { Logo } from '../shared/Logo';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useIsMobile, useIsTablet, useIsDesktop } from '../../hooks';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -16,6 +17,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, pageTitle }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const { settings } = useSettings();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const isDesktop = useIsDesktop();
@@ -38,6 +41,12 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, pageTitle }) => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleLogout = () => {
+    logout();
+    setShowProfile(false);
+    navigate('/dashboard');
+  };
 
   return (
     <header className={`fixed top-0 right-0 left-0 ${!isMobile ? (isCompact ? 'left-[72px]' : 'left-[260px]') : ''} bg-navy-950/80 backdrop-blur-md border-b border-navy-700 h-16 z-40 transition-all duration-300 shadow-sm`}>
@@ -112,33 +121,49 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick, pageTitle }) => {
             )}
           </div>
 
-          <div className="relative" ref={profileRef}>
-            <button 
-              onClick={() => setShowProfile(!showProfile)}
-              className="bg-[#0A1224] border border-navy-700 rounded-full w-9 h-9 flex items-center justify-center text-[10px] font-bold text-cyan-400 hover:bg-navy-800 hover:border-cyan-500/50 transition-all shadow-[0_0_10px_rgba(34,211,238,0.1)]"
-            >
-              AS
-            </button>
-            
-            {showProfile && (
-              <div className="absolute right-0 top-12 w-56 bg-[#0A1224] border border-navy-700 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] py-2 z-50">
-                <div className="px-4 py-3 mb-2 border-b border-navy-700/50 bg-[#050A15]/50">
-                  <p className="text-xs font-bold tracking-wide text-slate-100">Arjun Sharma</p>
-                  <p className="text-[10px] font-mono text-slate-400 mt-0.5">arjun@aerorecon3d.com</p>
-                </div>
+          <div className="relative ml-2" ref={profileRef}>
+            {user ? (
+              <>
+                <button 
+                  onClick={() => setShowProfile(!showProfile)}
+                  className="bg-[#0A1224] border border-navy-700 rounded-full w-9 h-9 flex items-center justify-center text-[10px] font-bold text-cyan-400 hover:bg-navy-800 hover:border-cyan-500/50 transition-all shadow-[0_0_10px_rgba(34,211,238,0.1)] uppercase"
+                >
+                  {user.name ? user.name.slice(0, 2) : user.email.slice(0, 2)}
+                </button>
                 
-                <Link to="/settings" onClick={() => setShowProfile(false)} className="flex items-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide text-slate-300 hover:text-cyan-400 hover:bg-navy-800 transition-colors">
-                  <User className="w-4 h-4" />
-                  Profile
-                </Link>
-                <Link to="/settings" onClick={() => setShowProfile(false)} className="flex items-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide text-slate-300 hover:text-cyan-400 hover:bg-navy-800 transition-colors">
-                  <SettingsIcon className="w-4 h-4" />
-                  Settings
-                </Link>
-                
-                <div className="my-1 border-t border-navy-700/50"></div>
-                
-              </div>
+                {showProfile && (
+                  <div className="absolute right-0 top-12 w-56 bg-[#0A1224] border border-navy-700 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] py-2 z-50">
+                    <div className="px-4 py-3 mb-2 border-b border-navy-700/50 bg-[#050A15]/50">
+                      <p className="text-xs font-bold tracking-wide text-slate-100">{user.name || 'User'}</p>
+                      <p className="text-[10px] font-mono text-slate-400 mt-0.5">{user.email}</p>
+                    </div>
+                    
+                    <Link to="/settings" onClick={() => setShowProfile(false)} className="flex items-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide text-slate-300 hover:text-cyan-400 hover:bg-navy-800 transition-colors">
+                      <User className="w-4 h-4" />
+                      Profile
+                    </Link>
+                    <Link to="/settings" onClick={() => setShowProfile(false)} className="flex items-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide text-slate-300 hover:text-cyan-400 hover:bg-navy-800 transition-colors">
+                      <SettingsIcon className="w-4 h-4" />
+                      Settings
+                    </Link>
+                    
+                    <div className="my-1 border-t border-navy-700/50"></div>
+                    
+                    <button onClick={handleLogout} className="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide text-rose-400 hover:bg-rose-500/10 transition-colors">
+                      <LogOut className="w-4 h-4" />
+                      Sign Out
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <Link 
+                to="/login"
+                className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 text-cyan-400 rounded-lg border border-cyan-500/30 hover:bg-cyan-500 hover:text-navy-950 font-bold text-xs tracking-widest transition-all"
+              >
+                <LogIn className="w-4 h-4" />
+                SIGN IN
+              </Link>
             )}
           </div>
         </div>

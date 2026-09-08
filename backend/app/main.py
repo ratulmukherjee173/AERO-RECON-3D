@@ -17,6 +17,8 @@ from sqlalchemy import text
 from .core.config import UPLOADS_DIR, OUTPUTS_DIR
 from .db.database import engine, Base, get_db, SessionLocal
 from .db.models import Job as DBJob, Project as DBProject
+from .auth import router as auth_router, get_current_user, User
+
 
 # ── App ──────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -41,11 +43,37 @@ app.add_middleware(
 # ── Database Initialization ──────────────────────────────────────────────
 Base.metadata.create_all(bind=engine)
 
+app.include_router(auth_router)
+
 @app.on_event("startup")
 def on_startup():
     db = SessionLocal()
     try:
         # Safe Idempotent SQLite Schema Migrations FIRST before any ORM queries
+        try:
+            db.execute(text("CREATE TABLE IF NOT EXISTS users (id VARCHAR PRIMARY KEY, email VARCHAR UNIQUE NOT NULL, password_hash VARCHAR NOT NULL, name VARCHAR, is_active BOOLEAN DEFAULT 1, created_at DATETIME, updated_at DATETIME)"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        try:
+            db.execute(text("ALTER TABLE users ADD COLUMN name VARCHAR"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        try:
+            db.execute(text("ALTER TABLE projects ADD COLUMN owner_id VARCHAR"))
+            db.commit()
+        except Exception:
+            db.rollback()
+            
+        try:
+            db.execute(text("ALTER TABLE jobs ADD COLUMN owner_id VARCHAR"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
         try:
             db.execute(text("ALTER TABLE jobs ADD COLUMN report_path VARCHAR"))
             db.commit()
@@ -182,19 +210,21 @@ async def health():
 
 
 @app.post("/projects", tags=["projects"], response_model=ProjectResponse)
-async def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
-    db_proj = DBProject(id=uuid.uuid4().hex[:8], name=project.name, description=project.description)
+async def create_project(project: ProjectCreate, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user)):
+    db_proj = DBProject(id=uuid.uuid4().hex[:8], name=project.name, description=project.description, owner_id=current_user.id if current_user else None)
     db.add(db_proj)
     db.commit()
     db.refresh(db_proj)
     return db_proj
 
 @app.get("/projects", tags=["projects"], response_model=List[ProjectResponse])
-async def list_projects(db: Session = Depends(get_db)):
+async def list_projects(db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user)):
+    # Optional logic: only show public projects or user's own projects
+    # For now, just return all projects to preserve existing behavior or filter if needed.
     return db.query(DBProject).all()
 
 @app.get("/projects/{project_id}", tags=["projects"], response_model=ProjectResponse)
-async def get_project(project_id: str, db: Session = Depends(get_db)):
+async def get_project(project_id: str, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user)):
     proj = db.query(DBProject).filter(DBProject.id == project_id).first()
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -207,7 +237,8 @@ async def upload_video(
     file: UploadFile = File(...),
     telemetry_file: Optional[UploadFile] = File(None),
     project_id: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user)
 ):
     """Upload a drone video and start the reconstruction pipeline."""
     job_id = uuid.uuid4().hex[:8]
@@ -238,6 +269,7 @@ async def upload_video(
     db_job = DBJob(
         job_id=job_id,
         project_id=project_id,
+        owner_id=current_user.id if current_user else None,
         status="UPLOADED",
         progress="Video uploaded — ready to start",
         upload_path=str(upload_path),

@@ -10,12 +10,24 @@ import Viewer from '../pages/Viewer';
 import Accuracy from '../pages/Accuracy';
 import Reports from '../pages/Reports';
 import Settings from '../pages/Settings';
+import Login from '../pages/Login';
+import Register from '../pages/Register';
 
 export const router = createHashRouter([
   // ── Redirect Root to Dashboard ──
   {
     path: '/',
     element: <Navigate to='/dashboard' replace />,
+  },
+
+  // ── Auth Routes ──
+  {
+    path: '/login',
+    element: <Login />,
+  },
+  {
+    path: '/register',
+    element: <Register />,
   },
 
   // ── Application Routes (inside AppLayout with sidebar/header) ──

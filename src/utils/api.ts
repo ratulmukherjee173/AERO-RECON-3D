@@ -6,6 +6,11 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const url = `${BACKEND_URL}${endpoint}`;
 
   const headers = new Headers(options.headers || {});
+  
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
 
   // Set default content type if not provided and body is present (and not FormData)
   if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -18,7 +23,6 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   });
 
   if (response.status === 401) {
-    // Dispatch a custom event to handle unauthorized access globally (e.g. logging out)
     window.dispatchEvent(new Event('unauthorized'));
   }
 
