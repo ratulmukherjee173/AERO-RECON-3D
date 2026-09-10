@@ -145,7 +145,7 @@ export default function Processing() {
           }
         }
 
-        if (data.status !== 'SUCCESS' && data.status !== 'FAILED') {
+        if (data.status !== 'SUCCESS' && data.status !== 'FAILED' && data.status !== 'CANCELLED') {
           timer = setTimeout(pollStatus, 2000);
         }
       } catch (err: any) {
@@ -164,14 +164,29 @@ export default function Processing() {
     };
   }, [jobId]);
 
-  const cancelProcessing = () => {
-    if (window.confirm('Are you sure you want to cancel the processing? All progress will be lost.')) {
-      alert('Cancel not implemented in backend yet');
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const cancelProcessing = async () => {
+    if (window.confirm('Cancel this reconstruction?')) {
+      setIsCancelling(true);
+      try {
+        const res = await apiFetch(`/cancel/${jobId}`, { method: 'POST' });
+        if (res.ok) {
+           setJobState(prev => prev ? { ...prev, status: 'CANCELLED', progress: 'Cancelled by user', current_stage: 'Cancelled' } : null);
+        } else {
+           alert('Unable to cancel reconstruction. Please try again.');
+        }
+      } catch (err) {
+        alert('Unable to cancel reconstruction. Please try again.');
+      } finally {
+        setIsCancelling(false);
+      }
     }
   };
 
   const isCompleted = jobState?.status === 'SUCCESS';
   const isFailed = jobState?.status === 'FAILED';
+  const isCancelled = jobState?.status === 'CANCELLED';
   const isUnavailable = !jobId || (networkError && networkError.includes("no longer available"));
   
   const currentBackendIndex = backendStageOrder.indexOf(jobState?.current_stage || 'UPLOADED');
@@ -210,9 +225,9 @@ export default function Processing() {
       <div>
         <div className="flex items-center gap-3 mb-1">
           <h1 className="text-xl md:text-2xl font-bold text-slate-100">
-            {isUnavailable ? 'Reconstruction Job Unavailable' : isCompleted ? 'Model Generated Successfully' : isFailed ? 'Reconstruction Failed' : 'Reconstruction in Progress'}
+            {isUnavailable ? 'Reconstruction Job Unavailable' : isCompleted ? 'Model Generated Successfully' : isFailed ? 'Reconstruction Failed' : isCancelled ? 'Reconstruction Cancelled' : 'Reconstruction in Progress'}
           </h1>
-          {(!isUnavailable && !isCompleted && !isFailed) && (
+          {(!isUnavailable && !isCompleted && !isFailed && !isCancelled) && (
             jobState?.status === 'RUNNING' || jobState?.status === 'QUEUED' ? (
               <span className="bg-blue-500/10 text-blue-400 text-xs px-2.5 py-1 rounded-full font-medium tracking-wide">LIVE</span>
             ) : jobState?.status === 'UPLOADED' ? (
@@ -227,6 +242,13 @@ export default function Processing() {
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-center gap-3 text-amber-400 shadow-sm">
           <AlertTriangle className="w-5 h-5 shrink-0" />
           <p className="text-sm font-medium">{networkError}</p>
+        </div>
+      )}
+
+      {isCancelled && (
+        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 flex items-center gap-3 text-slate-400 shadow-sm">
+          <XCircle className="w-5 h-5 shrink-0" />
+          <p className="text-sm font-medium">This reconstruction was cancelled by the user.</p>
         </div>
       )}
 
@@ -245,7 +267,7 @@ export default function Processing() {
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#0ea5e905_1px,transparent_1px),linear-gradient(to_bottom,#0ea5e905_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none" />
         
         <div className="flex flex-col md:flex-row md:items-center gap-6 relative z-10">
-          <div className={`text-5xl md:text-6xl font-bold tracking-tight bg-clip-text text-transparent shrink-0 ${isFailed || isUnavailable ? 'bg-gradient-to-r from-slate-400 to-slate-500' : 'bg-gradient-to-r from-cyan-400 to-blue-500'}`}>
+          <div className={`text-5xl md:text-6xl font-bold tracking-tight bg-clip-text text-transparent shrink-0 ${isFailed || isUnavailable || isCancelled ? 'bg-gradient-to-r from-slate-400 to-slate-500' : 'bg-gradient-to-r from-cyan-400 to-blue-500'}`}>
             {isUnavailable ? '—' : `${overallProgress}%`}
           </div>
           <div className="flex-1">
@@ -535,14 +557,14 @@ export default function Processing() {
             >
               View Accuracy
             </Link>
-            {!isCompleted && !isFailed && (
-              <button onClick={cancelProcessing} className="w-full px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-colors">
-                Cancel Processing
+            {!isCompleted && !isFailed && !isCancelled && (
+              <button disabled={isCancelling} onClick={cancelProcessing} className={`w-full px-4 py-3 border rounded-lg text-[10px] font-bold tracking-widest uppercase transition-colors ${isCancelling ? 'bg-slate-800/50 text-slate-500 border-slate-700' : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/30'}`}>
+                {isCancelling ? 'Cancelling...' : 'Cancel Processing'}
               </button>
             )}
-            {isFailed && (
-              <Link to="/reconstruction/new" className="w-full text-center px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-lg text-[10px] font-bold tracking-widest uppercase transition-colors shadow-[0_0_15px_rgba(220,38,38,0.4)]">
-                Try Again
+            {(isFailed || isCancelled) && (
+              <Link to="/reconstruction/new" className={`w-full text-center px-4 py-3 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-colors ${isFailed ? 'bg-red-600 hover:bg-red-500 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}>
+                Start New Reconstruction
               </Link>
             )}
           </div>

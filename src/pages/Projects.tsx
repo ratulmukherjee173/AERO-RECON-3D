@@ -63,6 +63,7 @@ export default function Projects() {
     // Determine overall project status based on job history
     if (projectJobs.some(j => j.status === 'SUCCESS')) return 'SUCCESS';
     if (projectJobs.some(j => j.status === 'FAILED')) return 'FAILED';
+    if (projectJobs.some(j => j.status === 'CANCELLED')) return 'CANCELLED';
     
     // Check active jobs
     const activeJobs = projectJobs.filter(j => ['UPLOADED', 'QUEUED', 'RUNNING'].includes(j.status));

@@ -22,7 +22,7 @@ from .stage4_depth import DepthEstimationStage
 from .stage5_pointcloud import PointCloudStage
 
 
-def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=None) -> dict:
+def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=None, check_cancel=None) -> dict:
     """
     Execute the full 5-stage reconstruction pipeline.
 
@@ -32,6 +32,9 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
         Path to the input drone video file.
     job_id : str, optional
         Unique job identifier. Auto-generated if not supplied.
+    on_progress: callable, optional
+    check_cancel: callable, optional
+        Returns True if the pipeline should be aborted immediately.
 
     Returns
     -------
@@ -64,7 +67,15 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
         ("Stage 5 — Point Cloud",       PointCloudStage,       job_dir / "stage5"),
     ]
 
+    is_cancelled = False
+
     for i, (label, StageClass, stage_dir) in enumerate(stages):
+        if check_cancel and check_cancel():
+            is_cancelled = True
+            print(f"\n[!] Cancellation requested before {label}. Pipeline aborting.")
+            stage_reports.append({"stage": label, "status": "CANCELLED"})
+            break
+            
         print(f"\n{'-'*50}")
         print(f"  {label}")
         print(f"{'-'*50}")
@@ -94,12 +105,18 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
             break
             
     # ── Stage 6 and 7 (Subprocess for Open3D isolation) ───────────────────
-    if pipeline_data.get("ply_path") and stage_reports[-1].get("status") != "FAILED" and stage_reports[-1].get("status") != "EXCEPTION":
+    if not is_cancelled and pipeline_data.get("ply_path") and stage_reports[-1].get("status") != "FAILED" and stage_reports[-1].get("status") != "EXCEPTION":
         current_dir = Path(__file__).resolve().parent
         for i, (label, script_name) in enumerate([
             ("Stage 6 — Mesh Generation", "stage6_mesh.py"),
             ("Stage 7 — Vertex-Colored GLB", "stage7_texture.py")
         ], start=len(stages)):
+            if check_cancel and check_cancel():
+                is_cancelled = True
+                print(f"\n[!] Cancellation requested before {label}. Pipeline aborting.")
+                stage_reports.append({"stage": label, "status": "CANCELLED"})
+                break
+                
             print(f"\n{'-'*50}")
             print(f"  {label}")
             print(f"{'-'*50}")
@@ -119,18 +136,34 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
 
                 python_exe = "venv_mesh\\Scripts\\python.exe" if Path("venv_mesh\\Scripts\\python.exe").exists() else sys.executable
 
-                res = subprocess.run(
+                proc = subprocess.Popen(
                     [python_exe, script_path, "--job-id", job_id],
-                    capture_output=True, text=True, check=True, env=env
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
                 )
-                print(res.stdout)
-                stage_reports.append({"stage": label, "status": "SUCCESS"})
-            except subprocess.CalledProcessError as exc:
-                print(f"\n[!] {label} reported FAILURE.")
-                print(exc.stdout)
-                print(exc.stderr)
-                stage_reports.append({"stage": label, "status": "FAILED", "error": exc.stderr})
-                break
+                
+                while proc.poll() is None:
+                    if check_cancel and check_cancel():
+                        proc.terminate()
+                        is_cancelled = True
+                        break
+                    time.sleep(1)
+                
+                if is_cancelled:
+                    print(f"\n[!] Cancellation requested during {label}. Subprocess terminated.")
+                    stage_reports.append({"stage": label, "status": "CANCELLED"})
+                    break
+                else:
+                    out, err = proc.communicate()
+                    if proc.returncode != 0:
+                        print(f"\n[!] {label} reported FAILURE.")
+                        print(out)
+                        print(err)
+                        stage_reports.append({"stage": label, "status": "FAILED", "error": err})
+                        break
+                    else:
+                        print(out)
+                        stage_reports.append({"stage": label, "status": "SUCCESS"})
+                        
             except Exception as exc:
                 print(f"\n[X] {label} raised exception: {exc}")
                 stage_reports.append({"stage": label, "status": "EXCEPTION", "error": str(exc)})
@@ -138,15 +171,17 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
 
     pipeline_elapsed = time.perf_counter() - pipeline_start
     
-    if on_progress:
+    if on_progress and not is_cancelled:
         on_progress("Finalizing", 95)
 
     # ── Final report ──────────────────────────────────────────────────────
     ply_path = pipeline_data.get("ply_path")
     point_count = pipeline_data.get("point_count", 0)
     
-    # Check if ANY stage failed
+    # Check if ANY stage failed or cancelled
     has_failures = any(s.get("status") in ("FAILED", "EXCEPTION") for s in stage_reports)
+    
+    final_status = "CANCELLED" if is_cancelled else "FAILED" if has_failures else "SUCCESS"
     
     # Require PLY AND no stage failures for overall SUCCESS
     success = (ply_path is not None and Path(str(ply_path)).exists()) and not has_failures
@@ -154,7 +189,7 @@ def run_pipeline(video_path: str | Path, job_id: str | None = None, on_progress=
     report = {
         "job_id": job_id,
         "video_file": str(video_path),
-        "status": "SUCCESS" if success else "FAILED",
+        "status": final_status,
         "total_elapsed_seconds": round(pipeline_elapsed, 2),
         "ply_path": str(ply_path) if ply_path else None,
         "point_count": point_count,

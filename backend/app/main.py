@@ -151,11 +151,19 @@ class ProjectResponse(BaseModel):
         from_attributes = True
 
 # ── Background job runner ─────────────────────────────────────────────────
+_cancellation_flags: dict = {}
+
 def _run_job(job_id: str, video_path: Path):
     db = SessionLocal()
     try:
         job = db.query(DBJob).filter(DBJob.job_id == job_id).first()
         if not job:
+            return
+            
+        if _cancellation_flags.get(job_id, False):
+            job.status = "CANCELLED"
+            job.progress = "Cancelled before starting"
+            db.commit()
             return
             
         job.status = "RUNNING"
@@ -165,20 +173,30 @@ def _run_job(job_id: str, video_path: Path):
         db.commit()
 
         def on_progress(stage: str, prog: int):
-            if job.status != "FAILED":
+            if job.status != "FAILED" and job.status != "CANCELLED":
                 job.current_stage = stage
                 job.stage_progress = prog
                 job.progress = f"Running: {stage}"
                 db.commit()
 
+        def check_cancel():
+            return _cancellation_flags.get(job_id, False)
+
         from .pipeline.runner import run_pipeline
-        result = run_pipeline(video_path, job_id, on_progress=on_progress)
+        result = run_pipeline(video_path, job_id, on_progress=on_progress, check_cancel=check_cancel)
         
         job.status = result["status"]
-        job.progress = "Pipeline complete" if result["status"] == "SUCCESS" else "Pipeline failed"
         if result["status"] == "SUCCESS":
+            job.progress = "Pipeline complete"
             job.current_stage = "Complete"
-        job.stage_progress = 100 if result["status"] == "SUCCESS" else (job.stage_progress or 0)
+            job.stage_progress = 100
+        elif result["status"] == "CANCELLED":
+            job.progress = "Pipeline cancelled"
+            job.current_stage = "Cancelled"
+            job.stage_progress = 0
+        else:
+            job.progress = "Pipeline failed"
+            job.stage_progress = job.stage_progress or 0
         job.ply_path = result.get("ply_path")
         job.preview_ply_path = result.get("preview_ply_path")
         job.point_count = result.get("point_count")
@@ -303,6 +321,34 @@ async def start_pipeline(job_id: str, background_tasks: BackgroundTasks, db: Ses
     db.commit()
     
     return JobStatus(**{k: getattr(db_job, k) for k in JobStatus.model_fields if hasattr(db_job, k)})
+
+
+@app.post("/cancel/{job_id}", tags=["pipeline"])
+async def cancel_job(job_id: str, db: Session = Depends(get_db)):
+    """Cancel a queued or running reconstruction job."""
+    db_job = db.query(DBJob).filter(DBJob.job_id == job_id).first()
+    if not db_job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    if db_job.status == "SUCCESS":
+        return {"status": "SUCCESS", "message": "Job already completed successfully."}
+        
+    if db_job.status == "FAILED":
+        return {"status": "FAILED", "message": "Job already failed."}
+        
+    if db_job.status == "CANCELLED":
+        return {"status": "CANCELLED", "message": "Job already cancelled."}
+
+    # Signal the background task to cancel
+    _cancellation_flags[job_id] = True
+    
+    if db_job.status == "QUEUED":
+        db_job.status = "CANCELLED"
+        db_job.progress = "Cancelled by user before starting"
+        db_job.current_stage = "Cancelled"
+        db.commit()
+        
+    return {"status": "CANCELLED", "message": "Cancellation requested."}
 
 
 @app.get("/status/{job_id}", tags=["pipeline"], response_model=JobStatus)

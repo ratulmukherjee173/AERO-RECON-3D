@@ -79,11 +79,11 @@ export default function Dashboard() {
 
   const getStepStatus = (stepIndex: number, currentJob: JobSummary | undefined) => {
     if (!currentJob) return 'PENDING';
-    if (currentJob.status === 'FAILED') {
+    if (currentJob.status === 'FAILED' || currentJob.status === 'CANCELLED') {
        const currentStageIndex = PIPELINE_STEPS.findIndex(s => s.stageNames.includes(currentJob.current_stage || ''));
-       if (currentStageIndex === -1) return 'FAILED';
+       if (currentStageIndex === -1) return currentJob.status;
        if (stepIndex < currentStageIndex) return 'COMPLETED';
-       if (stepIndex === currentStageIndex) return 'FAILED';
+       if (stepIndex === currentStageIndex) return currentJob.status;
        return 'UNAVAILABLE';
     }
     if (currentJob.status === 'SUCCESS') return 'COMPLETED';
@@ -185,6 +185,7 @@ export default function Dashboard() {
               const isCompleted = status === 'COMPLETED';
               const isRunning = status === 'RUNNING';
               const isFailed = status === 'FAILED';
+              const isCancelled = status === 'CANCELLED';
               
               return (
                 <div key={step.label} className="flex flex-col items-center gap-3 relative min-w-[70px]">
@@ -194,10 +195,12 @@ export default function Dashboard() {
                     isCompleted ? "border-green-500 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.3)]" :
                     isRunning ? "border-blue-500 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.5)] animate-pulse" :
                     isFailed ? "border-red-500 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)]" :
+                    isCancelled ? "border-slate-500 text-slate-400 shadow-[0_0_10px_rgba(100,116,139,0.3)]" :
                     "border-navy-600 text-slate-600"
                   )}>
                     {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : 
                      isFailed ? <XCircle className="w-4 h-4" /> :
+                     isCancelled ? <XCircle className="w-4 h-4" /> :
                      isRunning ? <div className="w-2 h-2 rounded-full bg-blue-400 animate-ping" /> :
                      <div className="w-1.5 h-1.5 rounded-full bg-slate-600" />}
                   </div>
@@ -208,6 +211,7 @@ export default function Dashboard() {
                     isCompleted ? "text-slate-300" :
                     isRunning ? "text-blue-400 font-bold" :
                     isFailed ? "text-red-400" :
+                    isCancelled ? "text-slate-400" :
                     "text-slate-500"
                   )}>
                     {step.label}
