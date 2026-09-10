@@ -1,13 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, FolderKanban, PlusCircle, Cpu, Box, Target, FileText, Settings, X } from 'lucide-react';
 import { useIsMobile, useIsTablet, useIsDesktop } from '../../hooks';
 import { useSettings } from '../../contexts/SettingsContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { safeGetStorage } from '../../utils/storage';
 import { Logo } from '../shared/Logo';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+const DEFAULT_PROFILE = { name: 'Ratul Mukherjee', email: 'ratulmukherjee173@gmail.com', organization: 'GeoSpatial Tech Corp' };
+
+function getGuestProfile() {
+  const saved = safeGetStorage('guest_profile');
+  if (saved) {
+    try { return JSON.parse(saved); } catch { /* ignore */ }
+  }
+  return DEFAULT_PROFILE;
+}
+
+function getInitials(name: string): string {
+  if (!name) return 'RM';
+  return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 }
 
 const navItems = [
@@ -28,6 +45,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const isTablet = useIsTablet();
   const isDesktop = useIsDesktop();
   const { settings } = useSettings();
+  const { user, isAuthenticated } = useAuth();
+  
+  // Guest profile state — syncs with Settings via custom event
+  const [guestProfile, setGuestProfile] = useState(getGuestProfile);
+
+  useEffect(() => {
+    const handleGuestUpdate = () => setGuestProfile(getGuestProfile());
+    window.addEventListener('guest_profile_updated', handleGuestUpdate);
+    return () => window.removeEventListener('guest_profile_updated', handleGuestUpdate);
+  }, []);
+
+  // Derive display values from the single source of truth
+  const displayName = isAuthenticated && user ? (user.name || user.email) : (guestProfile.name || DEFAULT_PROFILE.name);
+  const displayRole = isAuthenticated ? 'Authenticated User' : 'Guest (Demo)';
+  const displayInitials = getInitials(displayName);
   
   const isCompact = !isMobile && (settings.compactSidebar || (isTablet && !isDesktop));
 
@@ -81,12 +113,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       <div className="border-t border-navy-600/30 p-4">
         <div className={`flex items-center ${isCompact ? 'justify-center' : 'gap-3'}`}>
           <div className="bg-blue-600 rounded-full w-9 h-9 flex items-center justify-center text-sm font-medium shrink-0 text-white">
-            AS
+            {displayInitials}
           </div>
           {!isCompact && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-100 truncate">Arjun Sharma</p>
-              <p className="text-xs text-slate-400 truncate">Engineer</p>
+              <p className="text-sm font-medium text-slate-100 truncate">{displayName}</p>
+              <p className="text-xs text-slate-400 truncate">{displayRole}</p>
             </div>
           )}
         </div>
