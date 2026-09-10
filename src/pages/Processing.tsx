@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
-  Check, Loader2, Film, Sparkles, Camera, Layers, Box, AlertTriangle, XCircle
+  Check, Loader2, Film, Sparkles, Camera, Layers, Box, AlertTriangle, XCircle,
+  ChevronLeft, Eye, Clock
 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import { safeSetStorage, safeGetStorage } from '../utils/storage';
+import { cn } from '../utils';
+
+// ── Types ────────────────────────────────────────────────────────────────
 
 interface JobStatus {
   job_id: string;
-  status: string; // QUEUED | RUNNING | SUCCESS | FAILED | UPLOADED
+  status: string; // QUEUED | RUNNING | SUCCESS | FAILED | UPLOADED | CANCELLED
   progress: string;
   current_stage?: string;
   stage_progress?: number;
@@ -18,6 +22,23 @@ interface JobStatus {
   error?: string;
 }
 
+interface JobSummaryItem {
+  job_id: string;
+  project_id: string | null;
+  status: string;
+  progress: string;
+  current_stage?: string;
+  stage_progress?: number;
+  point_count?: number;
+  elapsed_seconds?: number;
+  created_at: string;
+  updated_at?: string;
+  video_filename?: string;
+  has_telemetry: boolean;
+  has_ply: boolean;
+  has_glb: boolean;
+}
+
 interface PipelineStageDef {
   name: string;
   backendStage: string | null;
@@ -25,6 +46,8 @@ interface PipelineStageDef {
   subtitle?: string;
   unavailableLabel?: string;
 }
+
+// ── Constants ────────────────────────────────────────────────────────────
 
 const PIPELINE_STAGES: PipelineStageDef[] = [
   { name: 'Data Acquisition', backendStage: 'UPLOADED', statusType: 'implemented' },
@@ -89,31 +112,109 @@ const backendStageOrder = [
   'Failed'
 ];
 
+type FilterTab = 'All' | 'Processing' | 'Completed' | 'Failed' | 'Cancelled';
+
+const FILTER_TABS: { id: FilterTab; label: string; color: string }[] = [
+  { id: 'All', label: 'All', color: 'text-cyan-400' },
+  { id: 'Processing', label: 'Processing', color: 'text-blue-400' },
+  { id: 'Completed', label: 'Completed', color: 'text-green-400' },
+  { id: 'Failed', label: 'Failed', color: 'text-red-400' },
+  { id: 'Cancelled', label: 'Cancelled', color: 'text-slate-400' },
+];
+
+function matchesFilter(status: string, filter: FilterTab): boolean {
+  if (filter === 'All') return true;
+  if (filter === 'Processing') return status === 'QUEUED' || status === 'RUNNING';
+  if (filter === 'Completed') return status === 'SUCCESS';
+  if (filter === 'Failed') return status === 'FAILED';
+  if (filter === 'Cancelled') return status === 'CANCELLED';
+  return true;
+}
+
+function getStatusBadge(status: string) {
+  switch (status) {
+    case 'RUNNING': return { label: 'Processing', cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20' };
+    case 'QUEUED': return { label: 'Queued', cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20' };
+    case 'SUCCESS': return { label: 'Completed', cls: 'bg-green-500/10 text-green-400 border-green-500/20' };
+    case 'FAILED': return { label: 'Failed', cls: 'bg-red-500/10 text-red-400 border-red-500/20' };
+    case 'CANCELLED': return { label: 'Cancelled', cls: 'bg-slate-500/10 text-slate-400 border-slate-500/20' };
+    case 'UPLOADED': return { label: 'Ready', cls: 'bg-slate-500/10 text-slate-400 border-slate-500/20' };
+    default: return { label: status, cls: 'bg-slate-500/10 text-slate-400 border-slate-500/20' };
+  }
+}
+
+function formatDuration(secs?: number): string {
+  if (!secs) return '—';
+  const m = Math.floor(secs / 60);
+  const s = Math.round(secs % 60);
+  return `${m}m ${s}s`;
+}
+
+function formatDate(dateStr: string): string {
+  try {
+    return new Date(dateStr).toLocaleString();
+  } catch { return dateStr; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ══════════════════════════════════════════════════════════════════════════
+
 export default function Processing() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const jobId = location.state?.jobId || searchParams.get('jobId') || safeGetStorage('last_job_id');
+  const urlJobId = location.state?.jobId || searchParams.get('jobId');
+  const persistedJobId = safeGetStorage('last_job_id');
 
+  // View mode: 'list' = job list with filters, 'detail' = single job detail
+  const [viewMode, setViewMode] = useState<'list' | 'detail'>(urlJobId ? 'detail' : 'list');
+  const [activeJobId, setActiveJobId] = useState<string | null>(urlJobId || null);
+
+  // ── List mode state ──
+  const [allJobs, setAllJobs] = useState<JobSummaryItem[]>([]);
+  const [filter, setFilter] = useState<FilterTab>('All');
+  const [listLoading, setListLoading] = useState(true);
+
+  // ── Detail mode state ──
   const [jobState, setJobState] = useState<JobStatus | null>(null);
   const [report, setReport] = useState<any>(null);
   const [networkError, setNetworkError] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
+  // ── Fetch job list ──
+  const fetchJobs = useCallback(async () => {
+    try {
+      const res = await apiFetch('/jobs');
+      if (res.ok) {
+        const data = await res.json();
+        setAllJobs(data);
+      }
+    } catch { /* ignore */ }
+    finally { setListLoading(false); }
+  }, []);
+
+  // Poll job list every 5s while in list mode
   useEffect(() => {
+    if (viewMode !== 'list') return;
+    fetchJobs();
+    const interval = setInterval(fetchJobs, 5000);
+    return () => clearInterval(interval);
+  }, [viewMode, fetchJobs]);
+
+  // ── Detail mode: poll individual job ──
+  useEffect(() => {
+    if (viewMode !== 'detail' || !activeJobId) return;
+
     let isMounted = true;
     let timer: ReturnType<typeof setTimeout>;
     const abortController = new AbortController();
 
-    if (jobId) {
-       safeSetStorage('last_job_id', jobId);
-    } else {
-       setNetworkError("Reconstruction job unavailable. No job specified.");
-       return;
-    }
+    safeSetStorage('last_job_id', activeJobId);
 
     const pollStatus = async () => {
       if (!isMounted) return;
       try {
-        const res = await apiFetch(`/status/${jobId}`, {
+        const res = await apiFetch(`/status/${activeJobId}`, {
           signal: abortController.signal
         });
         if (!res.ok) {
@@ -125,24 +226,19 @@ export default function Processing() {
         }
         
         const data = await res.json();
-        
-        // Prevent state update if unmounted
         if (!isMounted) return;
         
         setJobState(data);
         
         if (data.status === 'SUCCESS' || data.status === 'FAILED') {
-          // Set active job for Viewer and fetch report path
-          safeSetStorage('last_job_id', jobId);
+          safeSetStorage('last_job_id', activeJobId);
           try {
-            const reportRes = await apiFetch(`/report/${jobId}`, { signal: abortController.signal });
+            const reportRes = await apiFetch(`/report/${activeJobId}`, { signal: abortController.signal });
             if (reportRes.ok) {
               const reportData = await reportRes.json();
               if (isMounted) setReport(reportData);
             }
-          } catch (e) {
-            // ignore fetch errors
-          }
+          } catch { /* ignore */ }
         }
 
         if (data.status !== 'SUCCESS' && data.status !== 'FAILED' && data.status !== 'CANCELLED') {
@@ -162,21 +258,39 @@ export default function Processing() {
       clearTimeout(timer);
       abortController.abort();
     };
-  }, [jobId]);
+  }, [viewMode, activeJobId]);
 
-  const [isCancelling, setIsCancelling] = useState(false);
+  // ── Navigation helpers ──
+  const openJobDetail = (jobId: string) => {
+    setActiveJobId(jobId);
+    setJobState(null);
+    setReport(null);
+    setNetworkError(null);
+    setViewMode('detail');
+    safeSetStorage('last_job_id', jobId);
+  };
 
+  const backToList = () => {
+    setViewMode('list');
+    setActiveJobId(null);
+    setJobState(null);
+    setReport(null);
+    setNetworkError(null);
+  };
+
+  // ── Cancel handler ──
   const cancelProcessing = async () => {
+    if (!activeJobId) return;
     if (window.confirm('Cancel this reconstruction?')) {
       setIsCancelling(true);
       try {
-        const res = await apiFetch(`/cancel/${jobId}`, { method: 'POST' });
+        const res = await apiFetch(`/cancel/${activeJobId}`, { method: 'POST' });
         if (res.ok) {
            setJobState(prev => prev ? { ...prev, status: 'CANCELLED', progress: 'Cancelled by user', current_stage: 'Cancelled' } : null);
         } else {
            alert('Unable to cancel reconstruction. Please try again.');
         }
-      } catch (err) {
+      } catch {
         alert('Unable to cancel reconstruction. Please try again.');
       } finally {
         setIsCancelling(false);
@@ -184,10 +298,210 @@ export default function Processing() {
     }
   };
 
+  // ── Computed values for list ──
+  const filteredJobs = allJobs.filter(j => matchesFilter(j.status, filter));
+  const counts: Record<FilterTab, number> = {
+    All: allJobs.length,
+    Processing: allJobs.filter(j => j.status === 'QUEUED' || j.status === 'RUNNING').length,
+    Completed: allJobs.filter(j => j.status === 'SUCCESS').length,
+    Failed: allJobs.filter(j => j.status === 'FAILED').length,
+    Cancelled: allJobs.filter(j => j.status === 'CANCELLED').length,
+  };
+
+  // ══════════════════════════════════════════════════════════════════════
+  // LIST VIEW
+  // ══════════════════════════════════════════════════════════════════════
+
+  if (viewMode === 'list') {
+    return (
+      <div className="max-w-6xl mx-auto space-y-6 pt-20 md:pt-4 pb-28 md:pb-8 px-4 md:px-0">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-slate-100 tracking-tight">Processing</h1>
+            <p className="text-sm text-slate-400 mt-1">Monitor and manage reconstruction jobs</p>
+          </div>
+          <Link 
+            to="/reconstruction/new"
+            className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-lg text-xs font-bold tracking-widest uppercase flex items-center justify-center gap-2 transition-all w-full sm:w-auto shadow-[0_0_15px_rgba(37,99,235,0.3)] hover:shadow-[0_0_20px_rgba(37,99,235,0.5)]"
+          >
+            New Reconstruction
+          </Link>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex bg-[#050A15] border border-navy-700/50 rounded-lg p-1 overflow-x-auto shadow-sm hide-scrollbar">
+          {FILTER_TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setFilter(tab.id)}
+              className={cn(
+                "px-4 py-1.5 rounded-md text-[11px] font-bold tracking-wider uppercase whitespace-nowrap transition-all flex items-center gap-1.5",
+                filter === tab.id 
+                  ? `bg-cyan-500/10 ${tab.color} shadow-[0_0_10px_rgba(34,211,238,0.2)]` 
+                  : "text-slate-400 hover:text-slate-200 hover:bg-navy-800/50"
+              )}
+            >
+              {tab.label}
+              <span className={cn(
+                "text-[9px] px-1.5 py-0.5 rounded-full font-bold",
+                filter === tab.id ? 'bg-navy-800 text-slate-300' : 'bg-navy-800/50 text-slate-500'
+              )}>
+                {counts[tab.id]}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Recently active job shortcut */}
+        {persistedJobId && !urlJobId && (
+          <button
+            onClick={() => openJobDetail(persistedJobId)}
+            className="w-full text-left bg-[#0A1224] border border-cyan-500/20 rounded-xl p-4 flex items-center gap-3 hover:border-cyan-500/40 transition-all group"
+          >
+            <div className="bg-cyan-500/10 border border-cyan-500/20 w-8 h-8 rounded-lg flex items-center justify-center shrink-0">
+              <Eye className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-cyan-400 tracking-wide">Continue watching last job</p>
+              <p className="text-[10px] font-mono text-slate-500 mt-0.5">Job ID: {persistedJobId}</p>
+            </div>
+            <ChevronLeft className="w-4 h-4 text-slate-500 rotate-180 group-hover:text-cyan-400 transition-colors" />
+          </button>
+        )}
+
+        {/* Job List */}
+        {listLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+            <span className="ml-3 text-sm text-slate-400">Loading jobs...</span>
+          </div>
+        ) : filteredJobs.length === 0 ? (
+          <div className="bg-[#0A1224] border border-navy-700/50 rounded-2xl p-12 text-center">
+            <Box className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+              {filter === 'Processing' ? 'No processing jobs' :
+               filter === 'Completed' ? 'No completed reconstructions' :
+               filter === 'Failed' ? 'No failed jobs' :
+               filter === 'Cancelled' ? 'No cancelled jobs' :
+               'No reconstruction jobs found'}
+            </p>
+            <p className="text-xs text-slate-500 mt-2">
+              {filter === 'All' ? 'Start a new reconstruction to see jobs here.' : 'Try a different filter.'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredJobs.map(job => {
+              const badge = getStatusBadge(job.status);
+              const isActive = job.status === 'RUNNING' || job.status === 'QUEUED';
+              
+              return (
+                <div 
+                  key={job.job_id} 
+                  className={cn(
+                    "bg-[#0A1224] border rounded-xl p-5 transition-all hover:border-cyan-500/30 cursor-pointer group",
+                    isActive ? "border-blue-500/30" : "border-navy-700/50"
+                  )}
+                  onClick={() => openJobDetail(job.job_id)}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    {/* Left: Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className={cn("text-[8px] px-2 py-0.5 rounded uppercase tracking-widest font-bold border shrink-0", badge.cls)}>
+                          {badge.label}
+                        </span>
+                        {isActive && (
+                          <span className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                            <span className="text-[9px] text-blue-400 font-bold tracking-widest uppercase">Live</span>
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-slate-200 truncate">
+                        {job.video_filename || `Job ${job.job_id}`}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
+                        <span className="text-[10px] font-mono text-slate-500">ID: {job.job_id}</span>
+                        <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatDate(job.created_at)}
+                        </span>
+                        {job.elapsed_seconds && (
+                          <span className="text-[10px] text-slate-500">
+                            Duration: {formatDuration(job.elapsed_seconds)}
+                          </span>
+                        )}
+                      </div>
+                      {/* Progress info for active jobs */}
+                      {isActive && job.current_stage && (
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] uppercase tracking-widest text-cyan-400 font-bold">{job.current_stage}</span>
+                            {job.stage_progress !== undefined && job.stage_progress !== null && (
+                              <span className="text-[10px] font-mono text-slate-400">{job.stage_progress}%</span>
+                            )}
+                          </div>
+                          <div className="h-1.5 bg-[#050A15] rounded-full overflow-hidden border border-navy-700/50">
+                            <div 
+                              className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(34,211,238,0.5)]" 
+                              style={{ width: `${job.stage_progress || 5}%` }} 
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {/* Error for failed jobs */}
+                      {job.status === 'FAILED' && job.progress && (
+                        <p className="text-[10px] text-red-400 mt-2 font-mono truncate">{job.progress}</p>
+                      )}
+                    </div>
+
+                    {/* Right: Actions */}
+                    <div className="flex flex-wrap gap-2 shrink-0">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); openJobDetail(job.job_id); }}
+                        className="px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-widest uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors"
+                      >
+                        View Details
+                      </button>
+                      {job.status === 'SUCCESS' && job.has_glb && (
+                        <Link 
+                          to={`/viewer?jobId=${job.job_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-widest uppercase bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+                        >
+                          3D Model
+                        </Link>
+                      )}
+                      {job.status === 'SUCCESS' && (
+                        <Link 
+                          to={`/accuracy/${job.job_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-3 py-1.5 rounded-lg text-[9px] font-bold tracking-widest uppercase bg-[#050A15] text-green-400 border border-green-500/20 hover:bg-green-500/10 transition-colors"
+                        >
+                          Accuracy
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // DETAIL VIEW (existing single-job view, preserved)
+  // ══════════════════════════════════════════════════════════════════════
+
   const isCompleted = jobState?.status === 'SUCCESS';
   const isFailed = jobState?.status === 'FAILED';
   const isCancelled = jobState?.status === 'CANCELLED';
-  const isUnavailable = !jobId || (networkError && networkError.includes("no longer available"));
+  const isUnavailable = !activeJobId || (networkError && networkError.includes("no longer available"));
   
   const currentBackendIndex = backendStageOrder.indexOf(jobState?.current_stage || 'UPLOADED');
   
@@ -222,6 +536,15 @@ export default function Processing() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pt-20 md:pt-4 pb-28 md:pb-8 px-4 md:px-0">
+      {/* Back to list button */}
+      <button 
+        onClick={backToList}
+        className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-cyan-400 uppercase tracking-widest transition-colors"
+      >
+        <ChevronLeft className="w-4 h-4" />
+        All Jobs
+      </button>
+
       <div>
         <div className="flex items-center gap-3 mb-1">
           <h1 className="text-xl md:text-2xl font-bold text-slate-100">
@@ -235,7 +558,7 @@ export default function Processing() {
             ) : null
           )}
         </div>
-        <p className="text-slate-400 font-mono text-sm">Job ID: {jobId || 'Unknown'}</p>
+        <p className="text-slate-400 font-mono text-sm">Job ID: {activeJobId || 'Unknown'}</p>
       </div>
 
       {networkError && (
@@ -536,7 +859,7 @@ export default function Processing() {
 
           <div className="flex flex-wrap gap-3">
             <Link 
-              to={`/viewer?jobId=${jobId}`} 
+              to={`/viewer?jobId=${activeJobId}`} 
               className={`flex-1 min-w-[140px] text-center px-4 py-3 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all ${
                 isCompleted 
                   ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' 
@@ -547,7 +870,7 @@ export default function Processing() {
               View 3D Model
             </Link>
             <Link 
-              to={`/accuracy/${jobId}`} 
+              to={`/accuracy/${activeJobId}`} 
               className={`flex-1 min-w-[140px] text-center px-4 py-3 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all ${
                 isCompleted 
                   ? 'bg-[#050A15] hover:bg-navy-800 text-cyan-400 border border-cyan-500/30 hover:border-cyan-500/50' 
