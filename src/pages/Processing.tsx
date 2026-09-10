@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { 
   Check, Loader2, Film, Sparkles, Camera, Layers, Box, AlertTriangle, XCircle
 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
-import { safeSetStorage } from '../utils/storage';
+import { safeSetStorage, safeGetStorage } from '../utils/storage';
 
 interface JobStatus {
   job_id: string;
@@ -91,9 +91,8 @@ const backendStageOrder = [
 
 export default function Processing() {
   const location = useLocation();
-  const navigate = useNavigate();
   const searchParams = new URLSearchParams(location.search);
-  const jobId = location.state?.jobId || searchParams.get('jobId');
+  const jobId = location.state?.jobId || searchParams.get('jobId') || safeGetStorage('last_job_id');
 
   const [jobState, setJobState] = useState<JobStatus | null>(null);
   const [report, setReport] = useState<any>(null);
@@ -104,6 +103,13 @@ export default function Processing() {
     let timer: ReturnType<typeof setTimeout>;
     const abortController = new AbortController();
 
+    if (jobId) {
+       safeSetStorage('last_job_id', jobId);
+    } else {
+       setNetworkError("Reconstruction job unavailable. No job specified.");
+       return;
+    }
+
     const pollStatus = async () => {
       if (!isMounted) return;
       try {
@@ -112,7 +118,8 @@ export default function Processing() {
         });
         if (!res.ok) {
           if (res.status === 404) {
-            navigate('/projects');
+            setNetworkError("Reconstruction job no longer available.");
+            return;
           }
           throw new Error('Status fetch failed');
         }
@@ -205,8 +212,12 @@ export default function Processing() {
           <h1 className="text-xl md:text-2xl font-bold text-slate-100">
             {isUnavailable ? 'Reconstruction Job Unavailable' : isCompleted ? 'Model Generated Successfully' : isFailed ? 'Reconstruction Failed' : 'Reconstruction in Progress'}
           </h1>
-          {!isUnavailable && !isCompleted && !isFailed && (
-            <span className="bg-blue-500/10 text-blue-400 text-xs px-2.5 py-1 rounded-full font-medium tracking-wide">LIVE</span>
+          {(!isUnavailable && !isCompleted && !isFailed) && (
+            jobState?.status === 'RUNNING' || jobState?.status === 'QUEUED' ? (
+              <span className="bg-blue-500/10 text-blue-400 text-xs px-2.5 py-1 rounded-full font-medium tracking-wide">LIVE</span>
+            ) : jobState?.status === 'UPLOADED' ? (
+              <span className="bg-slate-500/10 text-slate-400 text-xs px-2.5 py-1 rounded-full font-medium tracking-wide uppercase">READY / WAITING</span>
+            ) : null
           )}
         </div>
         <p className="text-slate-400 font-mono text-sm">Job ID: {jobId || 'Unknown'}</p>
