@@ -35,15 +35,14 @@ export default function Accuracy() {
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
         <div className="flex items-center gap-4">
-          <Link to={`/projects/${id || 'demo-001'}`} className="p-2 hover:bg-navy-800 rounded-lg text-slate-400 hover:text-slate-200 transition-colors">
+          <Link to={`/projects`} className="p-2 hover:bg-navy-800 rounded-lg text-slate-400 hover:text-slate-200 transition-colors">
             <ArrowLeft size={20} />
           </Link>
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl md:text-2xl font-bold text-slate-100">Accuracy Analysis</h1>
-              <span className="bg-amber-500/10 text-amber-400 text-xs px-2 py-0.5 rounded-full border border-amber-500/20 font-medium">DEMO</span>
             </div>
-            <p className="text-slate-400 text-sm mt-1">Urban Survey — Demo Flight 01</p>
+            <p className="text-slate-400 text-sm mt-1 font-mono">Job ID: {id}</p>
           </div>
         </div>
         <button onClick={() => alert('Exporting report...')} className="px-4 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-600 text-slate-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
