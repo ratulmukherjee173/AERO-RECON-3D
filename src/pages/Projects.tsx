@@ -82,9 +82,10 @@ export default function Projects() {
                             (p.description || '').toLowerCase().includes(searchTerm.toLowerCase());
       const pStatus = getProjectStatus(p.id);
       const matchesFilter = filter === 'All' || 
-                           (filter === 'Processing' && ['UPLOADED', 'QUEUED', 'RUNNING'].includes(pStatus)) ||
+                           (filter === 'Processing' && ['QUEUED', 'RUNNING'].includes(pStatus)) ||
                            (filter === 'Completed' && pStatus === 'SUCCESS') ||
-                           (filter === 'Failed' && pStatus === 'FAILED');
+                           (filter === 'Failed' && pStatus === 'FAILED') ||
+                           (filter === 'Cancelled' && pStatus === 'CANCELLED');
       return matchesSearch && matchesFilter;
     })
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -121,7 +122,7 @@ export default function Projects() {
         </div>
 
         <div className="flex bg-[#050A15] border border-navy-700/50 rounded-lg p-1 overflow-x-auto shadow-sm hide-scrollbar">
-          {['All', 'Processing', 'Completed', 'Failed'].map(f => (
+          {['All', 'Processing', 'Completed', 'Failed', 'Cancelled'].map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}

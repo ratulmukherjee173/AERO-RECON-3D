@@ -25,20 +25,23 @@ export function formatNumber(num: number): string {
  * Get status color class based on project status
  */
 export function getStatusColor(status: string): string {
-  switch (status) {
+  switch (status.toLowerCase()) {
+    case 'success':
     case 'completed':
+    case 'ready':
       return 'bg-green-500/15 text-green-400 border-green-500/30';
+    case 'running':
+    case 'queued':
     case 'processing':
+    case 'generating':
       return 'bg-blue-500/15 text-blue-400 border-blue-500/30';
     case 'failed':
       return 'bg-red-500/15 text-red-400 border-red-500/30';
     case 'pending':
       return 'bg-amber-500/15 text-amber-400 border-amber-500/30';
-    case 'ready':
-      return 'bg-green-500/15 text-green-400 border-green-500/30';
-    case 'generating':
-      return 'bg-blue-500/15 text-blue-400 border-blue-500/30';
     case 'cancelled':
+      return 'bg-slate-500/15 text-slate-400 border-slate-500/30';
+    case 'uploaded':
       return 'bg-slate-500/15 text-slate-400 border-slate-500/30';
     default:
       return 'bg-slate-500/15 text-slate-400 border-slate-500/30';
@@ -49,7 +52,11 @@ export function getStatusColor(status: string): string {
  * Get status label
  */
 export function getStatusLabel(status: string): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  const s = status.toLowerCase();
+  if (s === 'uploaded') return 'Ready / Waiting';
+  if (s === 'success') return 'Completed';
+  if (s === 'running' || s === 'queued') return 'Processing';
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /**
