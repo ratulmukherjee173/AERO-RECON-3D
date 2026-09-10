@@ -1,13 +1,86 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   User, Palette, Bell, Cpu, HardDrive, 
-  Save, AlertTriangle, RotateCcw
+  Save, AlertTriangle, RotateCcw, CheckCircle2
 } from 'lucide-react';
 import { useSettings } from '../contexts/SettingsContext';
+import { useAuth } from '../contexts/AuthContext';
+import { safeGetStorage, safeSetStorage } from '../utils/storage';
+import { apiFetch } from '../utils/api';
 
 export default function Settings() {
   const { settings, updateSettings, resetSettings } = useSettings();
+  const { user, isAuthenticated, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
+
+  // Profile Form State
+  const [profileForm, setProfileForm] = useState({
+    name: 'Ratul Mukherjee',
+    email: 'ratulmukherjee173@gmail.com',
+    organization: 'GeoSpatial Tech Corp'
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      setProfileForm({
+        name: user.name || '',
+        email: user.email || '',
+        organization: user.organization || 'GeoSpatial Tech Corp'
+      });
+    } else {
+      const savedGuest = safeGetStorage('guest_profile');
+      if (savedGuest) {
+        try {
+          const parsed = JSON.parse(savedGuest);
+          setProfileForm({
+            name: parsed.name || 'Ratul Mukherjee',
+            email: parsed.email || 'ratulmukherjee173@gmail.com',
+            organization: parsed.organization || 'GeoSpatial Tech Corp'
+          });
+        } catch(e) {}
+      }
+    }
+  }, [user, isAuthenticated]);
+
+  const handleProfileSubmit = async () => {
+    if (!profileForm.email || !/^\S+@\S+\.\S+$/.test(profileForm.email)) {
+      setSaveMessage({ type: 'error', text: 'Please enter a valid email address.' });
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveMessage(null);
+
+    try {
+      if (isAuthenticated) {
+        const res = await apiFetch('/auth/me', {
+          method: 'PUT',
+          body: JSON.stringify(profileForm)
+        });
+        if (res.ok) {
+          const updatedUser = await res.json();
+          updateUser(updatedUser);
+          setSaveMessage({ type: 'success', text: 'Profile updated successfully.' });
+        } else {
+          const data = await res.json();
+          setSaveMessage({ type: 'error', text: data.detail || 'Failed to update profile.' });
+        }
+      } else {
+        // Guest mode
+        safeSetStorage('guest_profile', JSON.stringify(profileForm));
+        // Need to fire a custom event to notify other components (like Header) if they read from storage
+        window.dispatchEvent(new Event('guest_profile_updated'));
+        setSaveMessage({ type: 'success', text: 'Profile updated successfully.' });
+      }
+    } catch (err) {
+      setSaveMessage({ type: 'error', text: 'Network error. Failed to save.' });
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
+  };
 
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
@@ -55,7 +128,7 @@ export default function Settings() {
                 
                 <div className="flex items-center gap-6">
                   <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
-                    AS
+                    {profileForm.name ? profileForm.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'RM'}
                   </div>
                   <button className="px-4 py-2 bg-navy-700 hover:bg-navy-600 border border-navy-500 rounded-lg text-sm font-medium text-slate-200 transition-colors">
                     Change Avatar
@@ -65,24 +138,50 @@ export default function Settings() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-300">Full Name</label>
-                    <input type="text" defaultValue="Alex Smith" className="w-full bg-navy-900 border border-navy-600 rounded-lg px-4 py-2.5 text-slate-100 focus:border-blue-500 focus:outline-none transition-colors" />
+                    <input 
+                      type="text" 
+                      value={profileForm.name} 
+                      onChange={(e) => setProfileForm({...profileForm, name: e.target.value})}
+                      className="w-full bg-navy-900 border border-navy-600 rounded-lg px-4 py-2.5 text-slate-100 focus:border-blue-500 focus:outline-none transition-colors" 
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-300">Email Address</label>
-                    <input type="email" defaultValue="alex@aerorecon.demo" className="w-full bg-navy-900 border border-navy-600 rounded-lg px-4 py-2.5 text-slate-100 focus:border-blue-500 focus:outline-none transition-colors" />
+                    <input 
+                      type="email" 
+                      value={profileForm.email} 
+                      onChange={(e) => setProfileForm({...profileForm, email: e.target.value})}
+                      className="w-full bg-navy-900 border border-navy-600 rounded-lg px-4 py-2.5 text-slate-100 focus:border-blue-500 focus:outline-none transition-colors" 
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-300">Role</label>
-                    <input type="text" defaultValue="Admin (Demo)" disabled className="w-full bg-navy-900/50 border border-navy-700 rounded-lg px-4 py-2.5 text-slate-500 cursor-not-allowed" />
+                    <input type="text" defaultValue={isAuthenticated ? "Authenticated User" : "Guest (Demo)"} disabled className="w-full bg-navy-900/50 border border-navy-700 rounded-lg px-4 py-2.5 text-slate-500 cursor-not-allowed" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-300">Organization</label>
-                    <input type="text" defaultValue="GeoSpatial Tech Corp" className="w-full bg-navy-900 border border-navy-600 rounded-lg px-4 py-2.5 text-slate-100 focus:border-blue-500 focus:outline-none transition-colors" />
+                    <input 
+                      type="text" 
+                      value={profileForm.organization} 
+                      onChange={(e) => setProfileForm({...profileForm, organization: e.target.value})}
+                      className="w-full bg-navy-900 border border-navy-600 rounded-lg px-4 py-2.5 text-slate-100 focus:border-blue-500 focus:outline-none transition-colors" 
+                    />
                   </div>
                 </div>
 
-                <button className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
-                  <Save size={16} /> Save Changes
+                {saveMessage && (
+                  <div className={`p-4 rounded-lg flex items-center gap-3 ${saveMessage.type === 'success' ? 'bg-green-500/10 text-green-400 border border-green-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}>
+                    {saveMessage.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+                    <span className="text-sm font-medium">{saveMessage.text}</span>
+                  </div>
+                )}
+
+                <button 
+                  onClick={handleProfileSubmit}
+                  disabled={isSaving}
+                  className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${isSaving ? 'bg-navy-700 text-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)] hover:shadow-[0_0_20px_rgba(37,99,235,0.5)]'}`}
+                >
+                  <Save size={16} /> {isSaving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             )}

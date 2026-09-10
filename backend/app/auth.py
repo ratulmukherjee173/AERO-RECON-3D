@@ -42,9 +42,15 @@ class UserResponse(BaseModel):
     id: str
     email: str
     name: Optional[str] = None
+    organization: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+class UserUpdate(BaseModel):
+    name: str
+    email: str
+    organization: Optional[str] = None
 
 # --- Utility Functions ---
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -130,4 +136,23 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
 def get_me(current_user: User = Depends(get_current_user)):
     if not current_user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return current_user
+
+@router.put("/me", response_model=UserResponse)
+def update_me(user_update: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        
+    # Check if email is being changed to an existing email
+    if user_update.email != current_user.email:
+        db_user = db.query(User).filter(User.email == user_update.email).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="Email already registered to another account")
+            
+    current_user.name = user_update.name
+    current_user.email = user_update.email
+    current_user.organization = user_update.organization
+    
+    db.commit()
+    db.refresh(current_user)
     return current_user

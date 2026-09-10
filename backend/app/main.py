@@ -63,6 +63,12 @@ def on_startup():
             db.rollback()
 
         try:
+            db.execute(text("ALTER TABLE users ADD COLUMN organization VARCHAR"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        try:
             db.execute(text("ALTER TABLE projects ADD COLUMN owner_id VARCHAR"))
             db.commit()
         except Exception:
